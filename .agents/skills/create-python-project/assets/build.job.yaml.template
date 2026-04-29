@@ -1,0 +1,21 @@
+name: "{{APP_NAME}}"
+kind: "job"
+
+build:
+  context: "."
+  dockerfile: "Dockerfile"
+  args:
+    PYTHON_VERSION: "{{PYTHON_VERSION}}"
+    INSTALL_ORACLE: "{{INSTALL_ORACLE}}"
+    INSTALL_MSSQL: "{{INSTALL_MSSQL}}"
+    INSTALL_AZCOPY: "{{INSTALL_AZCOPY}}"
+    ORACLE_INSTANTCLIENT_URL: "TODO: approved Oracle Instant Client artifact URL, if INSTALL_ORACLE=true"
+
+job:
+  command: ["{{JOB_COMMAND}}"]
+  schedule: "TODO: set cron schedule or remove for on-demand jobs"
+  retries: 1
+  timeout_seconds: 3600
+
+private_pypi:
+  note: "TODO: wire build secrets for UV_INDEX_<NAME>_USERNAME and UV_INDEX_<NAME>_PASSWORD if private packages are used."

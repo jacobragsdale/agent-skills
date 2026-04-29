@@ -1,0 +1,74 @@
+# syntax=docker/dockerfile:1.7
+ARG PYTHON_VERSION={{PYTHON_VERSION}}
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:latest
+
+FROM ${UV_IMAGE} AS uv-bin
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+ARG INSTALL_ORACLE={{INSTALL_ORACLE}}
+ARG INSTALL_MSSQL={{INSTALL_MSSQL}}
+ARG INSTALL_AZCOPY={{INSTALL_AZCOPY}}
+ARG ORACLE_INSTANTCLIENT_URL=""
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0 \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+COPY --from=uv-bin /uv /uvx /usr/local/bin/
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg tar unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Optional system dependencies. To add more later, add another INSTALL_* ARG
+# and keep its install commands isolated in this block.
+RUN set -eux; \
+    if [ "$INSTALL_MSSQL" = "true" ]; then \
+      apt-get update; \
+      apt-get install -y --no-install-recommends unixodbc curl gnupg; \
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg; \
+      . /etc/os-release; \
+      curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/prod.list" > /etc/apt/sources.list.d/mssql-release.list; \
+      apt-get update; \
+      ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi; \
+    if [ "$INSTALL_AZCOPY" = "true" ]; then \
+      curl -fsSL https://aka.ms/downloadazcopy-v10-linux -o /tmp/azcopy.tgz; \
+      tar -xzf /tmp/azcopy.tgz -C /tmp; \
+      cp /tmp/azcopy_linux_amd64_*/azcopy /usr/local/bin/azcopy; \
+      chmod +x /usr/local/bin/azcopy; \
+      rm -rf /tmp/azcopy*; \
+    fi; \
+    if [ "$INSTALL_ORACLE" = "true" ]; then \
+      test -n "$ORACLE_INSTANTCLIENT_URL" || (echo "Set ORACLE_INSTANTCLIENT_URL to an approved Instant Client zip URL." >&2; exit 1); \
+      apt-get update; \
+      apt-get install -y --no-install-recommends libaio1 unzip; \
+      curl -fsSL "$ORACLE_INSTANTCLIENT_URL" -o /tmp/oracle-instantclient.zip; \
+      unzip -q /tmp/oracle-instantclient.zip -d /opt/oracle; \
+      echo /opt/oracle/instantclient_* > /etc/ld.so.conf.d/oracle-instantclient.conf; \
+      ldconfig; \
+      rm -rf /var/lib/apt/lists/* /tmp/oracle-instantclient.zip; \
+    fi
+
+COPY . .
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ -f uv.lock ]; then uv sync --locked --no-dev; else uv sync --no-dev; fi
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE {{PORT}}
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:{{PORT}}{{HEALTH_PATH}}', timeout=2)"
+
+CMD ["uvicorn", "{{ASGI_APP}}", "--host", "0.0.0.0", "--port", "{{PORT}}"]

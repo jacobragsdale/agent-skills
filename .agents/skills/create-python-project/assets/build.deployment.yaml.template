@@ -1,0 +1,28 @@
+name: "{{APP_NAME}}"
+kind: "deployment"
+
+build:
+  context: "."
+  dockerfile: "Dockerfile"
+  args:
+    PYTHON_VERSION: "{{PYTHON_VERSION}}"
+    INSTALL_ORACLE: "{{INSTALL_ORACLE}}"
+    INSTALL_MSSQL: "{{INSTALL_MSSQL}}"
+    INSTALL_AZCOPY: "{{INSTALL_AZCOPY}}"
+    ORACLE_INSTANTCLIENT_URL: "TODO: approved Oracle Instant Client artifact URL, if INSTALL_ORACLE=true"
+
+deployment:
+  replicas: {{REPLICAS}}
+  port: {{PORT}}
+  health_path: "{{HEALTH_PATH}}"
+  readiness_path: "{{HEALTH_PATH}}"
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+private_pypi:
+  note: "TODO: wire build secrets for UV_INDEX_<NAME>_USERNAME and UV_INDEX_<NAME>_PASSWORD if private packages are used."
